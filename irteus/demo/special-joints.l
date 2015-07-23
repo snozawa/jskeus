@@ -152,3 +152,96 @@
     ))
 (warn "(test-interlocking-joint-arm)~%")
 (warn "(test-sample-legged-robot-with-interlocking-joints)~%")
+
+
+(defclass sample-base-closed-link-robot
+  :super robot-model
+  :slots ()
+  )
+
+(defmethod sample-base-closed-link-robot
+  (:init
+   ()
+   (prog1
+       (send-super :init :name "sample-base-closed-link-robot")
+     (let* ((l0 (send self :make-link :root-link :green :width 100 :depth 20 :height 20 :trans (float-vector 0 0 0)))
+            (l1 (send self :make-link :link1 :red))
+            (l2 (send self :make-link :link2 :blue :width 100 :depth 20 :height 20 :trans (float-vector 0 -50 0)))
+            (l3 (send self :make-link :link3 :red :trans (float-vector 0 0 -50)))
+            (l4 (send self :make-link :link4 :green))
+            (l5 (send self :make-link :link5 :blue))
+            (l6 (send self :make-link :link6 :red)))
+       (send l1 :translate (float-vector 0 50 0))
+       (send l2 :translate (float-vector 0 50 100))
+       (send l3 :translate (float-vector 0 -50 100))
+       (send l4 :translate (float-vector 0 0 100))
+       (send l5 :translate (float-vector 0 0 200))
+       (send l6 :translate (float-vector 0 0 300))
+       (let ((c (make-cascoords :coords (send (send l3 :copy-worldcoords) :translate (float-vector 0 0 -100))
+                                :name "l3-end-coords")))
+         (send l3 :assoc c)
+         (push c end-coords-list))
+       (let ((c0 (make-cascoords :coords (send (send l0 :copy-worldcoords) :translate (float-vector 0 -50 0))
+                                 :name "l0-end-coords"))
+             (c1 (make-cascoords :coords (send (send l0 :copy-worldcoords) :translate (float-vector 0 -50 0))
+                                 :name "l3-end-coords"))
+             (c2 (make-cascoords :coords (send (send l6 :copy-worldcoords) :translate (float-vector 0 0 100))
+                                 :name "l6-end-coords")))
+         (send l0 :assoc c0)
+         (send l3 :assoc c1)
+         (send l6 :assoc c2)
+         (push c0 end-coords-list)
+         (push c1 end-coords-list)
+         (push c2 end-coords-list))
+       (mapcar #'(lambda (pl cl)
+                   (send pl :assoc cl))
+               (list self l0 l1 l2 l2 l4 l5)
+               (list l0   l1 l2 l3 l4 l5 l6))
+       (setq joint-list
+             (mapcar #'(lambda (pl cl ax)
+                         (instance rotational-joint :init
+                                   :axis ax :name (format nil ":joint~A" (string-left-trim "link" (string-downcase (send cl :name))))
+                                   :parent-link pl :child-link cl))
+                     (list l0 l1 l2 l2 l4 l5)
+                     (list l1 l2 l3 l4 l5 l6)
+                     (list :x :x :x :z :y :x)))
+       (setq links (list l0 l1 l2 l3 l4 l5 l6))
+       (send self :init-ending)
+       ))
+   )
+  (:make-link
+   (name color
+    &key (depth 20) (width 20) (height 100) (trans (float-vector 0 0 (* 0.5 height)))
+         (weight 1000))
+   (let ((b0 (make-cube depth width height)))
+     (send b0 :translate trans)
+     (send b0 :set-color color)
+     (let ((ln (instance bodyset-link :init (make-cascoords)
+                         :bodies (list b0) :name name
+                         :centroid (send b0 :centroid)
+                         :weight weight)))
+       ln)))
+  )
+
+(defun test-sample-base-closed-link-robot
+  ()
+  (setq *robot* (instance sample-base-closed-link-robot :init))
+  (objects (list *robot*))
+  (let ((ret))
+    (send *robot* :angle-vector #f(-30.0 -30.0 -30.0 0.0 0.0 0.0))
+    (send *robot* :inverse-kinematics
+          (send *robot* :end-coords "l0-end-coords")
+          :link-list (send *robot* :link-list (send (send *robot* :end-coords "l3-end-coords") :parent))
+          :move-target (send *robot* :end-coords "l3-end-coords")
+          :rotation-axis :zy :translation-axis :x)
+    (send *robot* :inverse-kinematics
+          (list (send (send (send *robot* :end-coords "l6-end-coords") :copy-worldcoords) :translate (float-vector 40 40 -40))
+                (send *robot* :end-coords "l0-end-coords"))
+          :debug-view t
+          :rotation-axis (list nil nil)
+          :translation-axis (list t :x)
+          :link-list (list (send *robot* :link-list (send (send *robot* :end-coords "l6-end-coords") :parent))
+                           (send *robot* :link-list (send (send *robot* :end-coords "l3-end-coords") :parent)))
+          :move-target (list (send *robot* :end-coords "l6-end-coords") (send *robot* :end-coords "l3-end-coords"))
+          )
+    ))
